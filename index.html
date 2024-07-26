@@ -101,5 +101,113 @@ skyUniforms['turbidity'].value = 10;
 skyUniforms['rayleigh'].value = 2;
 skyUniforms['mieCoefficient'].value = 0.005;
 skyUniforms['mieDirectionalG'].value = 0.8;
+
+const parameters = {
+  elevation: 2,
+  azimuth: 180
+};
+
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+
+function updateSun() {
+  const phi = THREE.MathUtils.degToRad(90 - parameters.elevation);
+  const theta = THREE.MathUtils.degToRad(parameters.azimuth);
+  const sun = new THREE.Vector3();
+  sun.setFromSphericalCoords(1, phi, theta);
+  sky.material.uniforms['sunPosition'].value.copy(sun);
+  water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+  scene.environment = pmremGenerator.fromScene(sky).texture;
+}
+
+updateSun();
+
+// Create complex geometry for photorealistic rendering
+const loader = new THREE.GLTFLoader();
+loader.load('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Sponza/glTF/Sponza.gltf', function(gltf) {
+  const model = gltf.scene;
+  model.traverse(function(child) {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      child.material.envMapIntensity = 1.0;
+    }
+  });
+  model.position.set(0, 0, 0);
+  model.scale.set(10, 10, 10);
+  scene.add(model);
+}, undefined, function(error) {
+  console.error(error);
+});
+
+// Add directional light (sun)
+const sunLight = new THREE.DirectionalLight(0xffffaa, 1.5);
+sunLight.position.set(50, 100, 50);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 4096;
+sunLight.shadow.mapSize.height = 4096;
+sunLight.shadow.camera.near = 1;
+sunLight.shadow.camera.far = 500;
+scene.add(sunLight);
+
+// Add ambient light
+const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+scene.add(ambientLight);
+
+// Set up camera position
+camera.position.set(30, 30, 100);
+
+// Post-processing
+const composer = new THREE.EffectComposer(renderer);
+const renderPass = new THREE.RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+bloomPass.threshold = 0.8;
+bloomPass.strength = 0.8;
+bloomPass.radius = 0.3;
+composer.addPass(bloomPass);
+
+// Metrics display
+const metricsElement = document.getElementById('metrics');
+const renderInfoElement = document.getElementById('render-info');
+
+let frameCount = 0;
+let lastTime = performance.now();
+let fps = 0;
+
+// Animation loop
+function animate() {
+  requestAnimationFrame(animate);
+  
+  const time = performance.now();
+  frameCount++;
+  
+  if (time >= lastTime + 1000) {
+    fps = Math.round((frameCount * 1000) / (time - lastTime));
+    frameCount = 0;
+    lastTime = time;
+  }
+
+  // Update water
+  water.material.uniforms['time'].value += 1.0 / 60.0;
+
+  controls.update();
+  composer.render();
+
+  // Update metrics display
+  metricsElement.innerHTML = `
+    FPS: ${fps}<br>
+    Resolution: ${window.innerWidth}x${window.innerHeight}<br>
+    Pixel Ratio: ${window.devicePixelRatio.toFixed(2)}
+  `;
+
+  // Update render info
+  renderInfoElement.innerHTML = `
+    Rendering Engine: Three.js r${THREE.REVISION}<br>
+    Tone Mapping: ACES Filmic<br>
+    Shadow Map: PCF Soft Shadows<br>
+    Post-processing: Bloom
+  `;
+}
 </script>
 </body></html>
